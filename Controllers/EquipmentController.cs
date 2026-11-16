@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using LabEquipmentApi.Data;
 using LabEquipmentApi.Domain;
 using LabEquipmentApi.Contracts.Equipment;
+using FluentValidation;
 using Mapster;
 
 namespace LabEquipmentApi.Controllers
@@ -13,10 +14,14 @@ namespace LabEquipmentApi.Controllers
     public class EquipmentController : ControllerBase
     {
         private readonly LabDbContext _context;
+        private readonly IValidator<CreateEquipmentRequest> _validator;
 
-        public EquipmentController(LabDbContext context)
+        public EquipmentController(
+            LabDbContext context,
+            IValidator<CreateEquipmentRequest> validator)
         {
             _context = context;
+            _validator = validator;
         }
 
         // GET: api/equipment
@@ -84,10 +89,31 @@ namespace LabEquipmentApi.Controllers
 
         // POST: api/equipment
         [HttpPost]
-        public async Task<ActionResult<Equipment>> PostEquipment(Equipment equipment)
+        public async Task<ActionResult<Equipment>> PostEquipment(
+            [FromBody] CreateEquipmentRequest request)
         {
-            _context.EquipmentItems.Add(equipment);
+            var validationResult = await _validator.ValidateAsync(request);
 
+            if (!validationResult.IsValid)
+            {
+                foreach (var error in validationResult.Errors)
+                {
+                    ModelState.AddModelError(
+                        error.PropertyName,
+                        error.ErrorMessage);
+                }
+
+                return ValidationProblem(ModelState);
+            }
+
+            var equipment = new Equipment
+            {
+                Name = request.Name,
+                Room = request.Room,
+                IsAvailable = true
+            };
+
+            _context.EquipmentItems.Add(equipment);
             await _context.SaveChangesAsync();
 
             return CreatedAtAction(
@@ -108,7 +134,6 @@ namespace LabEquipmentApi.Controllers
             }
 
             _context.EquipmentItems.Remove(equipment);
-
             await _context.SaveChangesAsync();
 
             return NoContent();
